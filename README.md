@@ -1,121 +1,121 @@
 # ddcci
 
-一个基于 Linux I2C/DDC/CI 的小工具，用来扫描本机显示器设备，读取显示器 EDID 信息；如果识别到 Dell 显示器，则进一步尝试拼出固件版本。
+A small Linux I2C/DDC/CI utility that scans local monitor devices, reads monitor EDID information, and, when a Dell monitor is detected, tries to reconstruct its firmware version.
 
-当前仓库里的可执行文件名为 `DellDevice`，源码入口为 `main.c`。
+The executable currently built by this repository is named `DellDevice`, and the program entry point is `main.c`.
 
-## 功能概览
+## Feature Overview
 
-- 扫描系统中的 `/dev/iic*` 和 `/dev/i2c*`
-- 读取显示器 EDID
-- 判断设备厂商是否为 Dell
-- 提取显示器型号和序列号
-- 对 Dell 显示器通过 DDC/CI 读取控制码 `0xC8`、`0xC9`、`0xFD`
-- 对 Dell 显示器根据读取结果组合出固件版本字符串
+- Scan `/dev/iic*` and `/dev/i2c*` on the system
+- Read monitor EDID
+- Detect whether the monitor vendor is Dell
+- Extract the monitor model and serial number
+- For Dell monitors, read DDC/CI control codes `0xC8`, `0xC9`, and `0xFD`
+- For Dell monitors, combine those values into a firmware version string
 
-## 项目结构
+## Project Structure
 
-- `main.c`：主程序，包含 EDID 读取、Dell 识别、DDC/CI 通信和固件版本解析逻辑
-- `i2c-dev.h`：本地引入的 I2C ioctl 相关头文件
-- `Makefile`：构建脚本
-- `DellDevice`：当前仓库中已有的已编译产物
+- `main.c`: main program containing EDID reading, Dell detection, DDC/CI communication, and firmware version parsing logic
+- `i2c-dev.h`: locally included header for I2C ioctl definitions
+- `Makefile`: build script
+- `DellDevice`: prebuilt binary currently present in the repository
 
-## 构建
+## Build
 
-依赖很少，直接使用 `gcc` 编译即可。
+The project has very few dependencies and can be built directly with `gcc`.
 
 ```bash
 make
 ```
 
-生成产物：
+Generated binary:
 
 ```bash
 ./DellDevice
 ```
 
-清理：
+Clean build artifacts:
 
 ```bash
 make clean
 ```
 
-## 运行环境
+## Runtime Environment
 
-建议在 Linux 环境下运行，并满足以下条件：
+It is recommended to run this on Linux with the following conditions met:
 
-- 系统存在可访问的 `/dev/i2c-*` 或 `/dev/iic*` 设备节点
-- 当前用户对对应 I2C 设备有读写权限
-- 显示器和显卡链路支持 DDC/CI
-- 若需要读取固件版本，目标显示器需为 Dell，且其 DDC/CI 控制码响应符合当前实现假设
+- The system exposes accessible `/dev/i2c-*` or `/dev/iic*` device nodes
+- The current user has read and write permission for the corresponding I2C devices
+- The monitor and GPU connection support DDC/CI
+- To read firmware versions, the target monitor must be a Dell display whose DDC/CI responses match the assumptions in the current implementation
 
-如果没有权限，通常需要使用 `root` 或调整设备访问权限后再运行。
+If permission is denied, you usually need to run it as `root` or adjust device access permissions first.
 
-## 使用方式
+## Usage
 
-直接执行程序即可：
+Run the program directly:
 
 ```bash
 ./DellDevice
 ```
 
-程序会自动枚举系统中的 I2C 设备，并依次尝试读取显示器信息。
+The program automatically enumerates I2C devices on the system and tries to read monitor information from each one.
 
-对于非 Dell 显示器，程序只读取并输出 EDID 中的型号和序列号，固件版本显示为 `N/A`。
+For non-Dell monitors, it only reads and prints the model and serial number from EDID, and shows the firmware version as `N/A`.
 
-成功时输出类似：
+Example successful output:
 
 ```text
 /dev/i2c-3: Model = P2424HEB, Serial = XXXXXXXX, Firmware Version = M3T102
 ```
 
-非 Dell 显示器输出类似：
+Example output for a non-Dell monitor:
 
 ```text
 /dev/i2c-4: Model = VG27A, Serial = XXXXXXXX, Firmware Version = N/A
 ```
 
-失败时会输出对应设备的错误信息，例如：
+On failure, the program prints an error message for the corresponding device, for example:
 
 ```text
 Failed to get monitor info from /dev/i2c-3
 ```
 
-## 实现说明
+## Implementation Notes
 
-程序的核心流程如下：
+The core flow of the program is:
 
-1. 枚举 `/dev/iic*` 和 `/dev/i2c*`
-2. 对每个设备读取 EDID 地址 `0x50`
-3. 从 EDID 中解析厂商 ID、型号和序列号
-4. 判断厂商 ID 是否为 `DEL`
-5. 如果是 Dell，则向 DDC/CI 地址 `0x37` 发送 presence check
-6. Dell 设备继续读取控制码：
+1. Enumerate `/dev/iic*` and `/dev/i2c*`
+2. Read EDID from address `0x50` for each device
+3. Parse the vendor ID, model, and serial number from EDID
+4. Check whether the vendor ID is `DEL`
+5. If it is Dell, send a presence check to DDC/CI address `0x37`
+6. For Dell devices, continue reading control codes:
    - `0xC8`
    - `0xC9`
    - `0xFD`
-7. Dell 设备将这些值映射为固件版本字符串；非 Dell 设备仅保留 EDID 信息
+7. Map those values into a firmware version string; non-Dell devices keep EDID-only information
 
-其中型号来自 EDID 的 `0xFC` 描述符，序列号来自 `0xFF` 描述符。
+The model is taken from the EDID `0xFC` descriptor, and the serial number is taken from the `0xFF` descriptor.
 
-## 已知限制
+## Known Limitations
 
-- 非 Dell 显示器只读取 EDID，不会尝试通过 DDC/CI 读取固件版本
-- 设备扫描方式依赖 `ls /dev/iic* /dev/i2c* 2>/dev/null`
-- `Makefile` 使用最简单的 `gcc -o DellDevice main.c`，未显式添加额外编译选项
-- 固件版本解析逻辑是针对特定 Dell 机型规则写死的，不保证适用于所有型号
-- 程序会打印较多调试输出，包括完整 EDID dump 和控制码读取过程
-- 目前没有命令行参数、单元测试或安装脚本
+- Non-Dell monitors only use EDID parsing and do not attempt to read firmware versions through DDC/CI
+- Device scanning depends on `ls /dev/iic* /dev/i2c* 2>/dev/null`
+- The `Makefile` uses a minimal `gcc -o DellDevice main.c` build and does not explicitly add extra compiler flags
+- The firmware version parsing logic is hard-coded for specific Dell model behavior and may not work for all models
+- The program prints a large amount of debug output, including full EDID dumps and control code read traces
+- There are currently no command-line options, unit tests, or installation scripts
 
-## 后续可改进方向
+## Possible Improvements
 
-- 增加命令行参数，支持指定单个 I2C 设备
-- 增加静默模式或结构化输出模式，例如 JSON
-- 改进设备枚举方式，避免依赖 shell 命令
-- 将调试日志与正式输出分离
-- 补充更多型号的固件版本解析规则
-- 增加错误码和更稳定的重试逻辑
+- Add command-line options to target a single I2C device
+- Add a quiet mode or structured output mode such as JSON
+- Improve device enumeration to avoid depending on shell commands
+- Separate debug logs from normal output
+- Add firmware version parsing rules for more models
+- Add error codes and more reliable retry logic
 
-## 许可说明
+## License Notes
 
-仓库中 `i2c-dev.h` 文件头声明其来自 Linux I2C 相关实现，并带有 GPL 许可证说明。若准备对外分发或用于正式项目，建议进一步确认整个仓库的许可证边界和兼容性。
+The header comment in `i2c-dev.h` says it comes from Linux I2C-related code and includes GPL license text. If you plan to distribute this repository or use it in a formal project, you should verify the overall license boundaries and compatibility more carefully.
